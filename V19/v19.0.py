@@ -2,7 +2,8 @@
 # v19.0.py - Penambahan Dukungan Double Point Information with Timestamp
 # Deskripsi: Gateway IEC 61850 ke IEC 60870-5-104.
 # Fitur v19.0:
-# - Menambahkan dukungan untuk tipe data DoublePointInformationWithCP56Time2a (M_DP_TB_1).
+# - Menambahkan dukungan untuk tipe data DoublePointWithCP56Time2a (M_DP_TB_1).
+# - Memperbaiki NameError.
 # - Mempertahankan semua fitur dari v18.0.
 
 import asyncio
@@ -273,11 +274,11 @@ async def main_async():
     
     iec104_server = libiec60870server.IEC60870_5_104_server()
     
-    # MODIFIED: Add DoublePointInformationWithCP56Time2a
+    # KODE YANG DIPERBAIKI: Mengganti nama kelas yang salah
     data_types = {
         'measuredvaluescaled': MeasuredValueScaled, 'measuredvaluefloat': MeasuredValueShort,
         'singlepointinformation': SinglePointInformation, 'doublepointinformation': DoublePointInformation,
-        'doublepointinformationwithcp56time2a': DoublePointInformationWithCP56Time2a
+        'doublepointinformationwithcp56time2a': DoublePointWithCP56Time2a 
     }
     command_types = {'singlepointcommand': SingleCommand, 'doublepointcommand': DoubleCommand}
     ied_data_groups = {}
