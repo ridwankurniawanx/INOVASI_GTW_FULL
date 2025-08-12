@@ -84,9 +84,16 @@ class IEC60870_5_104_server:
                 if has_data:
                     IMasterConnection_sendASDU(connection, newAsdu)
 
-                if io is not None:
-                    InformationObject_destroy(io)
-
+                # ================================================================= #
+                # ==================== BLOK KODE YANG DIPERBAIKI ==================== #
+                # ================================================================= #
+                # Menghapus InformationObject_destroy(io) yang prematur
+                # if io is not None:
+                #    InformationObject_destroy(io)
+                # ================================================================= #
+                # ======================== AKHIR BLOK PERBAIKAN ===================== #
+                # ================================================================= #
+                
                 CS101_ASDU_destroy(newAsdu)
 
 
@@ -184,7 +191,16 @@ class IEC60870_5_104_server:
                 return False
 
             CS101_ASDU_addInformationObject(newAsdu, io)
-            InformationObject_destroy(io)
+            
+            # ================================================================= #
+            # ==================== BLOK KODE YANG DIPERBAIKI ==================== #
+            # ================================================================= #
+            # Menghapus InformationObject_destroy(io) yang prematur
+            # InformationObject_destroy(io)
+            # ================================================================= #
+            # ======================== AKHIR BLOK PERBAIKAN ===================== #
+            # ================================================================= #
+
             CS104_Slave_enqueueASDU(self.slave, newAsdu)
             CS101_ASDU_destroy(newAsdu)
             return True
@@ -262,7 +278,16 @@ class IEC60870_5_104_server:
                     return -1
 
                 CS101_ASDU_addInformationObject(newAsdu, io)
-                InformationObject_destroy(io)
+                
+                # ================================================================= #
+                # ==================== BLOK KODE YANG DIPERBAIKI ==================== #
+                # ================================================================= #
+                # Menghapus InformationObject_destroy(io) yang prematur
+                # InformationObject_destroy(io)
+                # ================================================================= #
+                # ======================== AKHIR BLOK PERBAIKAN ===================== #
+                # ================================================================= #
+
                 CS104_Slave_enqueueASDU(self.slave, newAsdu)
                 CS101_ASDU_destroy(newAsdu)
 
