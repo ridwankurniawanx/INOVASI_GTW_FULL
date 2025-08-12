@@ -30,7 +30,7 @@ class IEC60870_5_104_server:
 
             #* The CS101 specification only allows information objects without timestamp in GI responses */
 
-            all_types = [MeasuredValueScaled, MeasuredValueShort, SinglePointInformation, DoublePointInformation, DoublePointInformationWithCP56Time2a]
+            all_types = [MeasuredValueScaled, MeasuredValueShort, SinglePointInformation, DoublePointInformation, DoublePointWithCP56Time2a]
 
             for data_type in all_types:
                 newAsdu = CS101_ASDU_create(alParams, False, CS101_COT_INTERROGATED_BY_STATION, 0, 1, False, False)
@@ -51,14 +51,14 @@ class IEC60870_5_104_server:
                             creator = SinglePointInformation_create
                         elif data_type == DoublePointInformation:
                             creator = DoublePointInformation_create
-                        elif data_type == DoublePointInformationWithCP56Time2a:
-                            creator = DoublePointInformationWithCP56Time2a_create
+                        elif data_type == DoublePointWithCP56Time2a:
+                            creator = DoublePointWithCP56Time2a_create
                             timestamp = CP56Time2a()
                             CP56Time2a_setFromMsTimestamp(timestamp, Hal_getTimeInMs())
 
 
                         if io is None:
-                            if data_type == DoublePointInformationWithCP56Time2a:
+                            if data_type == DoublePointWithCP56Time2a:
                                 io = cast(creator(None, ioa, value, quality, timestamp), InformationObject)
                             else:
                                 io = cast(creator(None, ioa, value, quality), InformationObject)
@@ -72,10 +72,10 @@ class IEC60870_5_104_server:
                                 cast_type = SinglePointInformation
                             elif data_type == DoublePointInformation:
                                 cast_type = DoublePointInformation
-                            elif data_type == DoublePointInformationWithCP56Time2a:
-                                cast_type = DoublePointInformationWithCP56Time2a
+                            elif data_type == DoublePointWithCP56Time2a:
+                                cast_type = DoublePointWithCP56Time2a
 
-                            if data_type == DoublePointInformationWithCP56Time2a:
+                            if data_type == DoublePointWithCP56Time2a:
                                 CS101_ASDU_addInformationObject(newAsdu, cast(creator(cast(io, cast_type), ioa, value, quality, timestamp), InformationObject))
                             else:
                                 CS101_ASDU_addInformationObject(newAsdu, cast(creator(cast(io, cast_type), ioa, value, quality), InformationObject))
@@ -234,7 +234,7 @@ class IEC60870_5_104_server:
 
         float_data = float(data)
 
-        if io_type == DoublePointInformation or io_type == DoublePointInformationWithCP56Time2a:
+        if io_type == DoublePointInformation or io_type == DoublePointWithCP56Time2a:
             value = int(float_data)
         elif io_type == MeasuredValueShort:
             value = float_data
@@ -254,10 +254,10 @@ class IEC60870_5_104_server:
                     io = cast(SinglePointInformation_create(None, ioa, self.IOA_list[ioa]['data'], IEC60870_QUALITY_GOOD),InformationObject)
                 elif io_type == DoublePointInformation:
                     io = cast(DoublePointInformation_create(None, ioa, self.IOA_list[ioa]['data'], IEC60870_QUALITY_GOOD),InformationObject)
-                elif io_type == DoublePointInformationWithCP56Time2a:
+                elif io_type == DoublePointWithCP56Time2a:
                     timestamp = CP56Time2a()
                     CP56Time2a_setFromMsTimestamp(timestamp, Hal_getTimeInMs())
-                    io = cast(DoublePointInformationWithCP56Time2a_create(None, ioa, self.IOA_list[ioa]['data'], IEC60870_QUALITY_GOOD, timestamp), InformationObject)
+                    io = cast(DoublePointWithCP56Time2a_create(None, ioa, self.IOA_list[ioa]['data'], IEC60870_QUALITY_GOOD, timestamp), InformationObject)
                 else:
                     return -1
 
