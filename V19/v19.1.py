@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# v18.0.py - Rilis Final dengan Kolom Signal Name
+# v19.1.py - Rilis Final dengan Kolom Signal Name
 # Deskripsi: Gateway IEC 61850 ke IEC 60870-5-104.
-# Fitur v18.0:
+# Fitur v19.1:
 # - Menambahkan kolom "Signal Name" di UI yang diambil dari file konfigurasi.
 # - Arsitektur shutdown yang dirombak total menggunakan signal handler untuk 1x Ctrl+C.
 # - Menggunakan aiohttp untuk integrasi penuh dengan asyncio.
