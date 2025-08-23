@@ -1,5 +1,0 @@
-| Fitur | Deskripsi |
-|---|---|
-| **Penambahan Kolom "Signal Name" pada UI** | Script kini dapat mem-parsing nama sinyal dari file konfigurasi yang ditulis dengan format `NamaSinyal:iec61850://...`. Nama ini kemudian ditampilkan pada antarmuka web, memberikan label yang jelas dan mudah dibaca untuk setiap titik data (IOA), sehingga mempermudah identifikasi dan monitoring. |
-| **Arsitektur Shutdown Graceful dengan Signal Handler** | Proses untuk mematikan gateway dirombak total. Versi ini menggunakan *signal handler* `asyncio` untuk menangani sinyal interupsi seperti `Ctrl+C` (SIGINT). Ini memastikan semua koneksi ke IED, server web, dan koneksi WebSocket ditutup secara bersih dan teratur, mencegah proses yang menggantung atau error saat aplikasi dihentikan. |
-| **Integrasi Penuh `aiohttp` untuk Server Web** | Server HTTP yang menyajikan halaman monitoring kini menggunakan `aiohttp`, sebuah *framework* web asinkron. Hal ini mengintegrasikan server web secara penuh ke dalam *event loop* `asyncio` utama, membuatnya lebih efisien dan modern dibandingkan menjalankan server HTTP standar di *thread* terpisah. |
