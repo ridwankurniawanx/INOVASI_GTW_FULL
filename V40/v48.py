@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# v48.py - Rilis UI Carbon: Live Events + MMS Address Column
+# v48.py - Rilis UI Carbon Final: Fix Sorting Order
 # Deskripsi: Gateway IEC 61850 ke IEC 60870-5-104.
+
 
 import asyncio
 import json
@@ -270,7 +271,7 @@ def process_data_update(ied_id, key, data):
                 
                 logging.info(f"[{ied_id}] Update IOA {ioa} ({signal_name}): {value_to_send}")
                 
-                # LOGIC V53: Tambahkan Deskripsi Status ke Event Log
+                # LOGIC V55: Tambahkan Deskripsi Status ke Event Log
                 if not is_measurement:
                     status_desc = get_status_description(data_type, value_to_send)
                     event_log_msg = f"{formatted_timestamp} | {ied_id} | IOA: {ioa} | {signal_name} | Val: {value_to_send} | {status_desc}"
@@ -309,7 +310,7 @@ def do_invalidation(ied_id):
             if main_loop and main_loop.is_running():
                 main_loop.call_soon_threadsafe(broadcast_queue.put_nowait, update_payload)
             
-            # LOGIC V53: Tambahkan Deskripsi Status ke Event Log
+            # LOGIC V55: Tambahkan Deskripsi Status ke Event Log
             if not is_measurement:
                 status_desc = get_status_description(data_type, 'INVALID')
                 event_log_msg = f"{formatted_timestamp} | {ied_id} | IOA: {ioa} | {signal_name} | Val: INVALID | {status_desc}"
@@ -463,7 +464,7 @@ async def main_async():
     tasks = [asyncio.create_task(data_processor_task(processing_queue)), asyncio.create_task(broadcast_updates_task(broadcast_queue))]
     tasks.extend([asyncio.create_task(ied_handler(ied_id, uris)) for ied_id, uris in ied_data_groups.items()])
     
-    logging.info("Gateway v53 Berjalan. Tekan Ctrl+C untuk berhenti.")
+    logging.info("Gateway v55 Berjalan. Tekan Ctrl+C untuk berhenti.")
     await asyncio.gather(*tasks)
 
 async def shutdown(sig, loop):
@@ -485,7 +486,7 @@ async def shutdown(sig, loop):
     loop.stop()
 
 def create_index_html_if_not_exists():
-    logging.info("Membuat file index.html UI V53 (Events + Address)...")
+    logging.info("Membuat file index.html UI V55 (Fix Sorting)...")
     html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -531,17 +532,20 @@ def create_index_html_if_not_exists():
         /* Header */
         #header {{ 
             background-color: var(--bg-header); border-bottom: 1px solid var(--border-color);
-            padding: 0 24px; height: 60px; display: flex; justify-content: space-between; align-items: center;
+            padding: 0 24px; height: 70px; display: flex; justify-content: space-between; align-items: center;
             position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }}
         .header-left, .header-right {{ display: flex; align-items: center; gap: 20px; }}
         
         .brand {{ display: flex; align-items: center; gap: 12px; }}
         .logo-icon {{ 
-            width: 24px; height: 24px; fill: var(--color-info); 
+            width: 28px; height: 28px; fill: var(--color-info); 
             filter: drop-shadow(0 0 4px rgba(33, 150, 243, 0.4));
         }}
-        .brand h1 {{ margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.5px; color: var(--text-primary); }}
+        
+        .brand-text {{ display: flex; flex-direction: column; justify-content: center; }}
+        .brand h1 {{ margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.5px; color: var(--text-primary); line-height: 1.2; }}
+        .brand-subtitle {{ font-size: 11px; color: var(--text-secondary); font-weight: 400; letter-spacing: 0.3px; }}
 
         .creator-tag {{
             font-size: 11px; font-weight: 500; color: var(--text-secondary); opacity: 0.7; margin-right: 10px;
@@ -634,7 +638,10 @@ def create_index_html_if_not_exists():
                 <svg class="logo-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z"/>
                 </svg>
-                <h1>Gateway Monitor Pro</h1>
+                <div class="brand-text">
+                    <h1>Gateway Monitor Pro</h1>
+                    <span class="brand-subtitle">Gateway IEC 61850 ke IEC 60870-5-104</span>
+                </div>
             </div>
         </div>
         <div class="header-right">
@@ -824,7 +831,13 @@ def create_index_html_if_not_exists():
             
             if (data.type === 'event_history') {
                 while (eventTbody.firstChild) eventTbody.removeChild(eventTbody.firstChild);
-                data.data.slice().reverse().forEach(evt => addEventToTable(evt, false)); // No flash for history
+                // FIX: DO NOT REVERSE HERE. 
+                // Data comes as [Oldest, ..., Newest].
+                // We iterate sequentially:
+                // 1. Take Oldest -> Insert at Top -> [Oldest]
+                // 2. Take Newest -> Insert at Top -> [Newest, Oldest]
+                // Result: Newest at Top (Correct)
+                data.data.forEach(evt => addEventToTable(evt, false)); 
                 return;
             }
             
@@ -854,7 +867,7 @@ def create_index_html_if_not_exists():
                 document.getElementById(`st-${data.ioa}`).innerHTML = statusDesc ? `<span class="badge ${badgeClass}">${statusDesc}</span>` : '';
                 document.getElementById(`t-${data.ioa}`).textContent = data.timestamp.split(' ')[1];
                 
-                if (data.is_event !== false) addEventToTable(data, true); // Flash for live updates
+                if (data.is_event !== false) addEventToTable(data, true); 
             }
         };
     </script>
