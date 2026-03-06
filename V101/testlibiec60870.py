@@ -1,31 +1,34 @@
 #!/usr/bin/env python3
 from lib60870 import *
-import threading # Tambahkan ini
+import threading
 
 class IEC60870_5_104_server:
-    def __init__(self, ip = "0.0.0.0"):
+    def __init__(self, ip="0.0.0.0"):
         self.slave = CS104_Slave_create(100, 100)
         CS104_Slave_setLocalAddress(self.slave, ip)
         CS104_Slave_setServerMode(self.slave, CS104_MODE_SINGLE_REDUNDANCY_GROUP)
         self.alParams = CS104_Slave_getAppLayerParameters(self.slave)
         
-        # Inisialisasi Lock
-        self.lock = threading.Lock() 
-        
+        # Lock untuk sinkronisasi thread C dan Python
+        self.lock = threading.Lock()
+        self.IOA_list = {}
+
+        # Set Handlers
         CS104_Slave_setClockSyncHandler(self.slave, CS101_ClockSynchronizationHandler(self.clock), None)
         CS104_Slave_setInterrogationHandler(self.slave, CS101_InterrogationHandler(self.GI_h), None)
         CS104_Slave_setASDUHandler(self.slave, CS101_ASDUHandler(self.ASDU_h), None)
-        self.IOA_list = {}
 
     def GI_h(self, param, connection, asdu, qoi):
-        if (qoi == 20):
+        """Handler untuk General Interrogation (GI)"""
+        if qoi == 20:
             alParams = IMasterConnection_getApplicationLayerParameters(connection)
             IMasterConnection_sendACT_CON(connection, asdu, False)
-            all_types = [MeasuredValueScaled, MeasuredValueShort, SinglePointInformation, DoublePointInformation]
-
-            # Ambil snapshot data dengan LOCK agar tidak crash saat iterasi
+            
+            # Ambil snapshot data dengan LOCK agar iterasi aman dari update simultan
             with self.lock:
                 snapshot_ioa = list(self.IOA_list.items())
+
+            all_types = [MeasuredValueScaled, MeasuredValueShort, SinglePointInformation, DoublePointInformation]
 
             for data_type in all_types:
                 newAsdu = CS101_ASDU_create(alParams, False, CS101_COT_INTERROGATED_BY_STATION, 0, 1, False, False)
@@ -47,28 +50,32 @@ class IEC60870_5_104_server:
                             io = cast(creator(None, ioa, value, quality), InformationObject)
                             CS101_ASDU_addInformationObject(newAsdu, io)
                         else:
-                            if data_type == MeasuredValueScaled: cast_type = MeasuredValueScaled
-                            elif data_type == MeasuredValueShort: cast_type = MeasuredValueShort
-                            elif data_type == SinglePointInformation: cast_type = SinglePointInformation
-                            elif data_type == DoublePointInformation: cast_type = DoublePointInformation
-                            CS101_ASDU_addInformationObject(newAsdu, cast(creator(cast(io, cast_type), ioa, value, quality), InformationObject))
+                            # Masukkan ke chain ASDU
+                            if data_type == MeasuredValueScaled: cast_t = MeasuredValueScaled
+                            elif data_type == MeasuredValueShort: cast_t = MeasuredValueShort
+                            elif data_type == SinglePointInformation: cast_t = SinglePointInformation
+                            elif data_type == DoublePointInformation: cast_t = DoublePointInformation
+                            CS101_ASDU_addInformationObject(newAsdu, cast(creator(cast(io, cast_t), ioa, value, quality), InformationObject))
 
-                if has_data: 
+                if has_data:
                     IMasterConnection_sendASDU(connection, newAsdu)
                 
-                # JANGAN destroy 'io' secara manual di sini jika sudah masuk ke ASDU
+                # Cukup destroy ASDU, objek di dalamnya otomatis dibersihkan
                 CS101_ASDU_destroy(newAsdu)
 
             IMasterConnection_sendACT_TERM(connection, asdu)
             return True
-        return False
+        else:
+            IMasterConnection_sendACT_CON(connection, asdu, True)
+            return True
 
-    def add_ioa(self, number, type = MeasuredValueScaled, data = 0, callback = None, event = False):
+    def add_ioa(self, number, type=MeasuredValueScaled, data=0, callback=None, event=False):
         with self.lock:
-            if not number in self.IOA_list:
-                self.IOA_list[int(number)] = { 'type': type, 'data': data, 'callback': callback, 'event': event, 'quality': IEC60870_QUALITY_GOOD }
-                return 0
-        return -1
+            self.IOA_list[int(number)] = {
+                'type': type, 'data': data, 'callback': callback, 
+                'event': event, 'quality': IEC60870_QUALITY_GOOD
+            }
+        return 0
 
     def update_ioa(self, ioa, data, timestamp=None):
         with self.lock:
@@ -86,18 +93,20 @@ class IEC60870_5_104_server:
                     if io_type != MeasuredValueShort: value = int(value)
                 except: return -1
 
+            # Kirim spontaneity jika ada perubahan nilai atau status
             if value != config['data'] or quality != config.get('quality'):
                 config['data'] = value
                 config['quality'] = quality
 
                 if config['event']:
-                    # Logika pengiriman spontaneous (Spont)
                     is_sp = (io_type == SinglePointInformation)
                     is_dp = (io_type == DoublePointInformation)
                     use_ts = (timestamp is not None) and (is_sp or is_dp)
 
-                    type_id = {True: M_SP_TB_1 if is_sp else M_DP_TB_1, 
-                               False: M_SP_NA_1 if is_sp else M_DP_NA_1 if is_dp else M_ME_NA_1 if io_type == MeasuredValueScaled else M_ME_ND_1}[use_ts]
+                    type_id = {
+                        True: M_SP_TB_1 if is_sp else M_DP_TB_1,
+                        False: M_SP_NA_1 if is_sp else M_DP_NA_1 if is_dp else M_ME_NA_1 if io_type == MeasuredValueScaled else M_ME_ND_1
+                    }[use_ts]
 
                     newAsdu = CS101_ASDU_create(self.alParams, False, CS101_COT_SPONTANEOUS, 0, 1, False, False)
                     CS101_ASDU_setTypeID(newAsdu, type_id)
