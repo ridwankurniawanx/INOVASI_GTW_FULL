@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# libiec60870server.py - Hardened Edition
+from lib60870 import *
+import threading
+import ctypes
+
+class IEC60870_5_104_server:
+    def __init__(self, ip="0.0.0.0"):
+        # Inisialisasi Server
+        self.slave = CS104_Slave_create(100, 100)
+        CS104_Slave_setLocalAddress(self.slave, ip)
+        CS104_Slave_setServerMode(self.slave, CS104_MODE_SINGLE_REDUNDANCY_GROUP)
+        self.alParams = CS104_Slave_getAppLayerParameters(self.slave)
+        
+        # Lock untuk sinkronisasi thread C (Master) dan thread Python (Polling)
+        self.lock = threading.Lock()
+        self.IOA_list = {}
+
+        # PROTEKSI: Simpan referensi callback agar tidak di-Garbage Collect oleh Python
+        self._callbacks = {
+            'clock': CS101_ClockSynchronizationHandler(self.clock),
+            'interrogation': CS101_InterrogationHandler(self.GI_h),
+            'asdu': CS101_ASDUHandler(self.ASDU_h)
+        }
+
+        CS104_Slave_setClockSyncHandler(self.slave, self._callbacks['clock'], None)
+        CS104_Slave_setInterrogationHandler(self.slave, self._callbacks['interrogation'], None)
+        CS104_Slave_setASDUHandler(self.slave, self._callbacks['asdu'], None)
+
+    def GI_h(self, param, connection, asdu, qoi):
+        """Handler untuk General Interrogation (GI) - Titik paling rawan Segfault"""
+        if qoi == 20:
+            alParams = IMasterConnection_getApplicationLayerParameters(connection)
+            IMasterConnection_sendACT_CON(connection, asdu, False)
+            
+            # 1. Ambil snapshot data dengan LOCK agar iterasi aman
+            with self.lock:
+                snapshot_ioas = list(self.IOA_list.items())
+
+            all_types = [MeasuredValueScaled, MeasuredValueShort, SinglePointInformation, DoublePointInformation]
+
+            for data_type in all_types:
+                newAsdu = CS101_ASDU_create(alParams, False, CS101_COT_INTERROGATED_BY_STATION, 0, 1, False, False)
+                io = None
+                has_data = False
+                
+                for ioa, config in snapshot_ioas:
+                    if config['type'] == data_type:
+                        has_data = True
+                        val = config['data']
+                        q = config.get('quality', IEC60870_QUALITY_GOOD)
+
+                        # Tentukan creator berdasarkan tipe data
+                        if data_type == MeasuredValueScaled: cr = MeasuredValueScaled_create
+                        elif data_type == MeasuredValueShort: cr = MeasuredValueShort_create
+                        elif data_type == SinglePointInformation: cr = SinglePointInformation_create
+                        elif data_type == DoublePointInformation: cr = DoublePointInformation_create
+
+                        # 2. Memory Chain: C-Library mengambil alih kepemilikan 'io'
+                        if io is None:
+                            io = cast(cr(None, ioa, val, q), InformationObject)
+                        else:
+                            if data_type == MeasuredValueScaled: ct = MeasuredValueScaled
+                            elif data_type == MeasuredValueShort: ct = MeasuredValueShort
+                            elif data_type == SinglePointInformation: ct = SinglePointInformation
+                            elif data_type == DoublePointInformation: ct = DoublePointInformation
+                            io = cast(cr(cast(io, ct), ioa, val, q), InformationObject)
+                
+                if has_data:
+                    CS101_ASDU_addInformationObject(newAsdu, io)
+                    IMasterConnection_sendASDU(connection, newAsdu)
+                
+                # 3. JANGAN destroy 'io' manual jika sudah masuk ASDU. Cukup ASDU-nya.
+                CS101_ASDU_destroy(newAsdu)
+
+            IMasterConnection_sendACT_TERM(connection, asdu)
+            return True
+        else:
+            IMasterConnection_sendACT_CON(connection, asdu, True)
+            return True
+
+    def update_ioa(self, ioa, data, timestamp=None):
+        """Update data dari 61850 ke memori 104 dan kirim spontaneous jika perlu"""
+        with self.lock:
+            if ioa not in self.IOA_list: return -1
+            conf = self.IOA_list[ioa]
+            io_type = conf['type']
+            
+            quality = IEC60870_QUALITY_GOOD
+            if data == "INVALID":
+                quality = IEC60870_QUALITY_INVALID
+                val = conf['data']
+            else:
+                try: 
+                    val = float(data)
+                    if io_type != MeasuredValueShort: val = int(val)
+                except: return -1
+
+            if val != conf['data'] or quality != conf.get('quality'):
+                conf['data'] = val
+                conf['quality'] = quality
+
+                if conf['event']:
+                    # Kirim Spontaneous Report (COS)
+                    is_sp = (io_type == SinglePointInformation)
+                    is_dp = (io_type == DoublePointInformation)
+                    use_ts = (timestamp is not None) and (is_sp or is_dp)
+
+                    type_id = {
+                        True: M_SP_TB_1 if is_sp else M_DP_TB_1,
+                        False: M_SP_NA_1 if is_sp else M_DP_NA_1 if is_dp else M_ME_NA_1 if io_type == MeasuredValueScaled else M_ME_ND_1
+                    }[use_ts]
+
+                    newAsdu = CS101_ASDU_create(self.alParams, False, CS101_COT_SPONTANEOUS, 0, 1, False, False)
+                    CS101_ASDU_setTypeID(newAsdu, type_id)
+
+                    if use_ts:
+                        ts = struct_sCP56Time2a()
+                        CP56Time2a_setFromMsTimestamp(byref(ts), int(timestamp))
+                        io = cast(SinglePointWithCP56Time2a_create(None, ioa, bool(val), quality, byref(ts)) if is_sp else DoublePointWithCP56Time2a_create(None, ioa, int(val), quality, byref(ts)), InformationObject)
+                    else:
+                        if io_type == MeasuredValueScaled: io = cast(MeasuredValueScaled_create(None, ioa, int(val), quality), InformationObject)
+                        elif io_type == MeasuredValueShort: io = cast(MeasuredValueShort_create(None, ioa, val, quality), InformationObject)
+                        elif is_sp: io = cast(SinglePointInformation_create(None, ioa, bool(val), quality), InformationObject)
+                        elif is_dp: io = cast(DoublePointInformation_create(None, ioa, int(val), quality), InformationObject)
+
+                    CS101_ASDU_addInformationObject(newAsdu, io)
+                    CS104_Slave_enqueueASDU(self.slave, newAsdu)
+                    CS101_ASDU_destroy(newAsdu)
+        return 0
+
+    def add_ioa(self, number, type=MeasuredValueScaled, data=0, callback=None, event=False):
+        with self.lock:
+            self.IOA_list[int(number)] = {
+                'type': type, 'data': data, 'callback': callback, 
+                'event': event, 'quality': IEC60870_QUALITY_GOOD
+            }
+        return 0
+
+    def start(self):
+        CS104_Slave_start(self.slave)
+        return 0 if CS104_Slave_isRunning(self.slave) else -1
+    
+    def stop(self):
+        CS104_Slave_stop(self.slave)
+        CS104_Slave_destroy(self.slave)
+
+    def clock(self, param, con, asdu, newTime): return True
+    def ASDU_h(self, param, connection, asdu): return True
